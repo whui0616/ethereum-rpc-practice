@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>블록체인 5주차 과제 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #1e1e2f; color: #c8c8d0; font-family: 'Malgun Gothic', sans-serif; }
+        .tab-active { background-color: #2d2d44; border-bottom: 2px solid #00ffcc; color: #00ffcc; font-weight: bold; }
+        .btn-blue { background-color: #3b82f6; hover:bg-blue-600; color: white; padding: 8px 16px; border-radius: 4px; }
+        .btn-orange { background-color: #f97316; hover:bg-orange-600; color: white; padding: 8px 16px; border-radius: 4px; }
+        .btn-green { background-color: #10b981; hover:bg-green-600; color: white; padding: 8px 16px; border-radius: 4px; }
+        pre { background-color: #2d2d44; padding: 15px; border-radius: 8px; font-family: monospace; overflow-x: auto; }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-5xl mx-auto bg-[#252538] rounded-xl shadow-2xl overflow-hidden border border-gray-700">
+        <div class="bg-[#1a1a24] p-4 flex justify-between items-center border-b border-gray-700">
+            <h1 class="text-xl font-bold text-white">🔥 5주차 과제: 스마트 컨트랙트 시뮬레이터</h1>
+            <div class="text-sm">내 지갑 잔액: <span id="wallet-balance" class="text-[#00ffcc] font-bold">100 ETH</span></div>
+        </div>
+
+        <div class="flex bg-[#1a1a24]">
+            <button class="px-6 py-3 tab-active" id="tab1" onclick="changeTab(1)">1. Counter.sol</button>
+            <button class="px-6 py-3 text-gray-400" id="tab2" onclick="changeTab(2)">2. CounterNumber.sol</button>
+            <button class="px-6 py-3 text-gray-400" id="tab3" onclick="changeTab(3)">3. Faucet.sol</button>
+        </div>
+
+        <div class="p-6 grid grid-cols-2 gap-6">
+            <div>
+                <h2 class="text-lg text-white mb-2">💻 Solidity Code</h2>
+                <pre id="code-viewer" class="text-sm text-green-300 h-64"></pre>
+                <button onclick="deployContract()" class="w-full mt-4 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg shadow-lg transition">🚀 컨트랙트 배포 (Deploy)</button>
+            </div>
+
+            <div>
+                <h2 class="text-lg text-white mb-2">⚙️ 실행 결과 (Interaction)</h2>
+                <div id="interaction-area" class="bg-[#2d2d44] p-4 rounded-lg h-64 flex flex-col gap-3 border border-gray-600">
+                    <p class="text-gray-400 text-center mt-20">왼쪽에서 [배포] 버튼을 먼저 눌러주세요!</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-[#1a1a24] p-4 border-t border-gray-700">
+            <h3 class="text-white mb-2 text-sm">터미널 로그</h3>
+            <div id="log-area" class="h-32 overflow-y-auto text-xs font-mono text-gray-400 space-y-1">
+                <div>> 시뮬레이터가 정상적으로 로드되었습니다. 과제를 시작하세요!</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 컨트랙트 코드 데이터
+        const codes = {
+            1: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.25;\n\ncontract Counter {\n    uint public counter = 0;\n\n    function get() public view returns (uint) {\n        return counter;\n    }\n\n    function count() public {\n        counter += 1;\n    }\n}`,
+            2: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.25;\n\ncontract CounterNumber {\n    uint public counter = 0;\n\n    function addNumber(uint _number) public {\n        counter += _number;\n    }\n\n    function reset() public {\n        counter = 0;\n    }\n}`,
+            3: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.25;\n\ncontract Faucet {\n    uint256 public constant WITHDRAWAL_AMOUNT = 0.1 ether;\n\n    function withdraw() external {\n        // 0.1 ETH를 요청자에게 전송\n    }\n\n    receive() external payable {\n        // Faucet에 이더리움 충전\n    }\n}`
+        };
+
+        let currentTab = 1;
+        let myWallet = 100; // 내 지갑 잔액
+        
+        // 컨트랙트 상태 변수
+        let states = {
+            1: { counter: 0 },
+            2: { counter: 0 },
+            3: { faucetBalance: 0 }
+        };
+
+        // 탭 변경 함수
+        function changeTab(tabIndex) {
+            currentTab = tabIndex;
+            
+            // 탭 디자인 변경
+            for(let i=1; i<=3; i++) {
+                document.getElementById('tab'+i).className = (i === tabIndex) 
+                    ? "px-6 py-3 tab-active" 
+                    : "px-6 py-3 text-gray-400 hover:text-white transition";
+            }
+
+            // 코드 변경
+            document.getElementById('code-viewer').innerText = codes[tabIndex];
+            
+            // 배포 전 상태로 리셋
+            document.getElementById('interaction-area').innerHTML = `<p class="text-gray-400 text-center mt-20">왼쪽에서 [배포] 버튼을 먼저 눌러주세요!</p>`;
+            
+            addLog(`> 탭 변경: ${tabIndex}번 컨트랙트 코드를 불러왔습니다.`);
+        }
+
+        // 배포 버튼
+        function deployContract() {
+            const area = document.getElementById('interaction-area');
+            area.innerHTML = ''; // 초기화
+
+            if (currentTab === 1) {
+                states[1].counter = 0;
+                area.innerHTML += `
+                    <div class="flex items-center gap-2"><button class="btn-green w-32" onclick="readCounter1()">counter</button><span id="res-counter1" class="text-white text-sm"></span></div>
+                    <div class="flex items-center gap-2"><button class="btn-green w-32" onclick="readCounter1()">get()</button></div>
+                    <hr class="border-gray-600 my-1">
+                    <button class="btn-orange w-32" onclick="executeCount()">count()</button>
+                `;
+                addLog(`> [배포 성공] Counter 컨트랙트가 블록체인에 올라갔습니다.`);
+            } 
+            else if (currentTab === 2) {
+                states[2].counter = 0;
+                area.innerHTML += `
+                    <div class="flex items-center gap-2"><button class="btn-green w-32" onclick="readCounter2()">counter</button><span id="res-counter2" class="text-white text-sm"></span></div>
+                    <hr class="border-gray-600 my-1">
+                    <div class="flex gap-2">
+                        <input type="number" id="input-num" placeholder="더할 숫자 입력" class="p-2 rounded bg-gray-800 text-white w-32">
+                        <button class="btn-orange" onclick="executeAddNumber()">addNumber()</button>
+                    </div>
+                    <button class="btn-orange w-32" onclick="executeReset()">reset()</button>
+                `;
+                addLog(`> [배포 성공] CounterNumber 컨트랙트가 블록체인에 올라갔습니다.`);
+            }
+            else if (currentTab === 3) {
+                area.innerHTML += `
+                    <div class="bg-gray-800 p-2 rounded text-center text-sm text-yellow-400 mb-2 font-bold">자판기(Faucet) 보유량: <span id="faucet-bal">${states[3].faucetBalance.toFixed(1)} ETH</span></div>
+                    <button class="btn-blue w-full" onclick="executeDeposit()">💰 Faucet에 1 ETH 기부하기 (receive)</button>
+                    <button class="btn-orange w-full" onclick="executeWithdraw()">💸 0.1 ETH 빼오기 (withdraw)</button>
+                `;
+                addLog(`> [배포 성공] Faucet 컨트랙트가 블록체인에 올라갔습니다.`);
+            }
+        }
+
+        // --- 함수 실행 로직 ---
+        function readCounter1() {
+            document.getElementById('res-counter1').innerText = `↳ 0: uint256: ${states[1].counter}`;
+            addLog(`> [View] 현재 counter 값은 ${states[1].counter} 입니다.`);
+        }
+        function executeCount() {
+            states[1].counter += 1;
+            addLog(`> [Write] count() 실행! 숫자가 1 증가했습니다.`);
+        }
+
+        function readCounter2() {
+            document.getElementById('res-counter2').innerText = `↳ 0: uint256: ${states[2].counter}`;
+            addLog(`> [View] 현재 counter 값은 ${states[2].counter} 입니다.`);
+        }
+        function executeAddNumber() {
+            let num = parseInt(document.getElementById('input-num').value);
+            if(isNaN(num)) { addLog(`> [에러] 숫자를 입력해주세요!`); return; }
+            states[2].counter += num;
+            addLog(`> [Write] addNumber(${num}) 실행! 숫자가 증가했습니다.`);
+        }
+        function executeReset() {
+            states[2].counter = 0;
+            addLog(`> [Write] reset() 실행! 숫자가 0으로 초기화되었습니다.`);
+        }
+
+        function executeDeposit() {
+            myWallet -= 1;
+            states[3].faucetBalance += 1;
+            updateMoney();
+            addLog(`> [Write] 내 지갑에서 Faucet으로 1 ETH를 보냈습니다.`);
+        }
+        function executeWithdraw() {
+            if(states[3].faucetBalance < 0.1) {
+                addLog(`> [에러] Faucet에 돈이 부족합니다! 먼저 기부해주세요.`);
+                return;
+            }
+            states[3].faucetBalance -= 0.1;
+            myWallet += 0.1;
+            updateMoney();
+            addLog(`> [Write] withdraw() 실행! 0.1 ETH를 받았습니다.`);
+        }
+
+        // 돈 관련 UI 업데이트
+        function updateMoney() {
+            document.getElementById('wallet-balance').innerText = `${myWallet.toFixed(1)} ETH`;
+            document.getElementById('faucet-bal').innerText = `${states[3].faucetBalance.toFixed(1)} ETH`;
+        }
+
+        // 터미널 로그 추가
+        function addLog(msg) {
+            const logArea = document.getElementById('log-area');
+            const time = new Date().toLocaleTimeString();
+            logArea.innerHTML += `<div><span class="text-blue-400">[${time}]</span> ${msg}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // 첫 시작
+        changeTab(1);
+    </script>
+</body>
+</html>
